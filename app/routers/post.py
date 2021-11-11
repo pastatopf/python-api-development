@@ -1,4 +1,4 @@
-from .. import models, schemas, utils
+from .. import models, schemas, oauth2
 from fastapi import FastAPI,Response,status,HTTPException,Depends, APIRouter
 from ..database import get_db
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/posts", tags=["Posts"])
 #     return {"data": posts}
 
 @router.get("/", response_model=List[schemas.Post])
-def get_posts(db: Session = Depends(get_db)):
+def get_posts(db: Session = Depends(get_db), current_user: int = Depends(oauth2.get_current_user)):
     posts = db.query(models.Post).all()
     return posts
 
@@ -37,9 +37,10 @@ def get_posts(db: Session = Depends(get_db)):
 #     return {"data": new_post}
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=schemas.Post)
-def create_posts(post: schemas.PostCreate, db: Session = Depends(get_db)):
+def create_posts(post: schemas.PostCreate, db: Session = Depends(get_db), current_user: int = Depends(oauth2.get_current_user)):
     # takes post and converts it to a dictionary and unpack it with **
-    new_post = models.Post(**post.dict())
+    print(current_user.email)
+    new_post = models.Post(owner_id=current_user.id, **post.dict())
     db.add(new_post)
     db.commit()
     # retrieve created post
@@ -70,7 +71,7 @@ def create_posts(post: schemas.PostCreate, db: Session = Depends(get_db)):
 #     return {"post_detail": post}
 
 @router.get("/{id}",  response_model=schemas.Post)
-def get_post(id: int, db: Session = Depends(get_db)):
+def get_post(id: int, db: Session = Depends(get_db), current_user: int = Depends(oauth2.get_current_user)):
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"post with id: {id} was not found")
@@ -101,12 +102,20 @@ def get_post(id: int, db: Session = Depends(get_db)):
 #     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_post(id: int, db: Session = Depends(get_db)):
-    post = db.query(models.Post).filter(models.Post.id == id)
+def delete_post(id: int, db: Session = Depends(get_db), current_user: int = Depends(oauth2.get_current_user)):
+    # define query
+    post_query = db.query(models.Post).filter(models.Post.id == id)
+    # get the post
+    post = post_query.first()
 
-    if post.first() == None:
+    # Checks if the post which he wants to delete exists
+    if post == None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"post with id: {id} doesn't exist")
-    post.delete(synchronize_session=False)
+    # checks if user wants to delete his own post, only this is permited
+    if post.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not authorized to perform requested action')
+    # delete the post
+    post_query.delete(synchronize_session=False)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -134,7 +143,7 @@ def delete_post(id: int, db: Session = Depends(get_db)):
 #     return {"data": updated_post}
 
 @router.put("/{id}", response_model=schemas.Post)
-def update_post(id: int, updated_post: schemas.PostCreate, db: Session = Depends(get_db)):
+def update_post(id: int, updated_post: schemas.PostCreate, db: Session = Depends(get_db), current_user: int = Depends(oauth2.get_current_user)):
     # query to find post with specific id
     post_query = db.query(models.Post).filter(models.Post.id == id)
     # grab that specific post
@@ -142,6 +151,9 @@ def update_post(id: int, updated_post: schemas.PostCreate, db: Session = Depends
     # if it doesn't exist run a 404
     if post == None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"post with id: {id} doesn't exist")
+    # if the post is not a post from the logged in user throw an error
+    if post.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not authorized to perform requested action')
     # if it exists update it 
     post_query.update(updated_post.dict(), synchronize_session=False)
     # commit this changes
