@@ -2,6 +2,8 @@ from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from typing import Optional
 
+from pydantic.types import conint
+
 # refered as Schema/Pydantic Model - check a request from user against this model
 # defines the structure of a request & response
 # ensures that when a user wants to create a post, the request will only go though if it has certain fields in the body (here title and content)
@@ -44,3 +46,8 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     id: Optional[str]
+
+class Vote(BaseModel):
+    post_id: int
+    dir: conint(le=1)
+    
