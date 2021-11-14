@@ -1,6 +1,8 @@
 from pydantic import BaseSettings
 
 # Model to check if all needed environment parameters are set
+
+
 class Settings(BaseSettings):
     database_hostname: str
     database_port: str
@@ -14,5 +16,5 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
 
+
 settings = Settings()
-print(settings.database_password)

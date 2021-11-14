@@ -1,7 +1,8 @@
 from .. import models, schemas, oauth2
-from fastapi import FastAPI,Response,status,HTTPException,Depends, APIRouter
+from fastapi import Response, status, HTTPException, Depends, APIRouter
 from ..database import get_db
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import Optional, List
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
@@ -13,10 +14,13 @@ router = APIRouter(prefix="/posts", tags=["Posts"])
 #     posts = cursor.fetchall()
 #     return {"data": posts}
 
-@router.get("/", response_model=List[schemas.Post])
-def get_posts(db: Session = Depends(get_db), current_user: int = Depends(oauth2.get_current_user), limit: int = 10, skip: int = 0, search: Optional [str] = ""):
-    print(limit)
-    posts = db.query(models.Post).filter(models.Post.title.contains(search)).limit(limit).offset(skip).all()
+
+@router.get("/", response_model=List[schemas.PostOut])
+# @router.get("/")
+def get_posts(db: Session = Depends(get_db), current_user: int = Depends(oauth2.get_current_user), limit: int = 10, skip: int = 0, search: Optional[str] = ""):
+    # posts = db.query(models.Post).filter(models.Post.title.contains(search)).limit(limit).offset(skip).all()
+    posts = db.query(models.Post, func.count(models.Vote.post_id).label("votes")).join(models.Vote, models.Vote.post_id == models.Post.id,
+                                                                                       isouter=True).group_by(models.Post.id).filter(models.Post.title.contains(search)).limit(limit).offset(skip).all()
     return posts
 
 # just for testing purposes as first step, when working without databases
@@ -36,6 +40,7 @@ def get_posts(db: Session = Depends(get_db), current_user: int = Depends(oauth2.
 #     conn.commit()
 #     new_post = cursor.fetchone()
 #     return {"data": new_post}
+
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=schemas.Post)
 def create_posts(post: schemas.PostCreate, db: Session = Depends(get_db), current_user: int = Depends(oauth2.get_current_user)):
@@ -71,11 +76,15 @@ def create_posts(post: schemas.PostCreate, db: Session = Depends(get_db), curren
 #         # return {'message': f"post with id: {id} was not found"}
 #     return {"post_detail": post}
 
-@router.get("/{id}",  response_model=schemas.Post)
+
+@router.get("/{id}",  response_model=schemas.PostOut)
 def get_post(id: int, db: Session = Depends(get_db), current_user: int = Depends(oauth2.get_current_user)):
-    post = db.query(models.Post).filter(models.Post.id == id).first()
+    # post = db.query(models.Post).filter(models.Post.id == id).first()
+    post = db.query(models.Post, func.count(models.Vote.post_id).label("votes")).join(models.Vote, models.Vote.post_id == models.Post.id,
+                                                                                      isouter=True).group_by(models.Post.id).first()
     if not post:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"post with id: {id} was not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"post with id: {id} was not found")
         # response.status_code = status.HTTP_404_NOT_FOUND
         # return {'message': f"post with id: {id} was not found"}
     return post
@@ -102,6 +111,7 @@ def get_post(id: int, db: Session = Depends(get_db), current_user: int = Depends
 #         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"post with id: {id} doesn't exist")
 #     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_post(id: int, db: Session = Depends(get_db), current_user: int = Depends(oauth2.get_current_user)):
     # define query
@@ -111,10 +121,12 @@ def delete_post(id: int, db: Session = Depends(get_db), current_user: int = Depe
 
     # Checks if the post which he wants to delete exists
     if post == None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"post with id: {id} doesn't exist")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"post with id: {id} doesn't exist")
     # checks if user wants to delete his own post, only this is permited
     if post.owner_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not authorized to perform requested action')
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail='Not authorized to perform requested action')
     # delete the post
     post_query.delete(synchronize_session=False)
     db.commit()
@@ -143,6 +155,7 @@ def delete_post(id: int, db: Session = Depends(get_db), current_user: int = Depe
 #         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"post with id: {id} doesn't exist")
 #     return {"data": updated_post}
 
+
 @router.put("/{id}", response_model=schemas.Post)
 def update_post(id: int, updated_post: schemas.PostCreate, db: Session = Depends(get_db), current_user: int = Depends(oauth2.get_current_user)):
     # query to find post with specific id
@@ -151,11 +164,13 @@ def update_post(id: int, updated_post: schemas.PostCreate, db: Session = Depends
     post = post_query.first()
     # if it doesn't exist run a 404
     if post == None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"post with id: {id} doesn't exist")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"post with id: {id} doesn't exist")
     # if the post is not a post from the logged in user throw an error
     if post.owner_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not authorized to perform requested action')
-    # if it exists update it 
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail='Not authorized to perform requested action')
+    # if it exists update it
     post_query.update(updated_post.dict(), synchronize_session=False)
     # commit this changes
     db.commit()
