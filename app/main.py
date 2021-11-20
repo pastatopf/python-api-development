@@ -30,7 +30,7 @@ app.include_router(vote.router)
 
 @app.get("/")
 def root():
-    return {"message": "Welcome to my super visual studio API"}
+    return {"message": "Welcome to my super visual studio API!!!"}
 
 # just for testing, store data in memory instead of database as a first step
 # my_posts = [{"title": "title of post 1", "content": "content of post 1","id": 1},
